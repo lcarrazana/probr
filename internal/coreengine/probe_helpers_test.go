@@ -21,10 +21,13 @@ func TestGetRootDir(t *testing.T) {
 
 func TestGetOutputPath(t *testing.T) {
 	var file *os.File
-	d := "test_output_dir"
+	d := filepath.Join(t.TempDir(), "test_output_dir") //Using t.TempDir() to ensure built-in test directory is automatically removed by cleanup when test and subtests complete. See: https://golang.org/pkg/testing/#pkg-subdirectories
 	f := "test_file"
 	desiredFile := filepath.Join(d, f) + ".json"
 	defer func() {
+
+		cucumberDirFunc = config.CucumberDir //Restoring to original function after test
+
 		// Cleanup test assets
 		file.Close()
 		err := os.RemoveAll(d)
@@ -38,7 +41,11 @@ func TestGetOutputPath(t *testing.T) {
 			t.Fail()
 		}
 	}()
-	config.Vars.CucumberDir = d
+	// Faking result for config.CucumberDir(). This is used inside getOutputPath.
+	cucumberDirFunc = func() string {
+		_ = os.Mkdir(d, 0755) // Creates if not already existing
+		return d
+	}
 	file, _ = getOutputPath(f)
 	if desiredFile != file.Name() {
 		t.Logf("Desired filepath '%s' does not match '%s'", desiredFile, file.Name())
