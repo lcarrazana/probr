@@ -114,23 +114,23 @@ func LogConfigState() {
 }
 
 // AuditDir creates -audit- directory within WriteDirectory
-func AuditDir() string {
-	auditDir := filepath.Join(WriteDirectory(), "audit")
+func (ctx *ConfigVars) AuditDir() string {
+	auditDir := filepath.Join(ctx.GetWriteDirectory(), "audit")
 	_ = os.Mkdir(auditDir, 0755) // Creates if not already existing
 	return auditDir
 }
 
 // CucumberDir creates -cucumber- directory within WriteDirectory
-func CucumberDir() string {
-	cucumberDir := filepath.Join(WriteDirectory(), "cucumber")
+func (ctx *ConfigVars) CucumberDir() string {
+	cucumberDir := filepath.Join(ctx.GetWriteDirectory(), "cucumber")
 	_ = os.Mkdir(cucumberDir, 0755) // Creates if not already existing
 	return cucumberDir
 }
 
 // WriteDirectory creates the output folder specified in settings
-func WriteDirectory() string {
-	_ = os.Mkdir(Vars.WriteDirectory, 0755) // Creates if not already existing
-	return Vars.WriteDirectory
+func (ctx *ConfigVars) GetWriteDirectory() string {
+	_ = os.Mkdir(ctx.WriteDirectory, 0755) // Creates if not already existing
+	return ctx.WriteDirectory
 }
 
 func (ctx *ConfigVars) handleConfigFileExclusions() {
