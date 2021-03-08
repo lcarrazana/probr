@@ -37,8 +37,7 @@ type Connection interface {
 	ClusterIsDeployed() error
 	CreatePodFromObject(pod *apiv1.Pod, probeName string) (*apiv1.Pod, error)
 	DeletePodIfExists(podName, namespace, probeName string) error
-	ExecCommand(command, namespace, podName string) (int, error)
-	ExecCommand2(cmd, namespace, podName string) (status int, stdOut string, err error)
+	ExecCommand(command, namespace, podName string) (status int, stdout string, err error)
 	GetPodsByNamespace(namespace string) (*apiv1.PodList, error)
 }
 
@@ -144,7 +143,7 @@ func (connection *Conn) DeletePodIfExists(podName, namespace, probeName string) 
 }
 
 // ExecCommand executes the supplied command on the given pod name in the specified namespace.
-func (connection *Conn) ExecCommand(cmd, namespace, podName string) (status int, err error) {
+func (connection *Conn) ExecCommand(cmd, namespace, podName string) (status int, stdout string, err error) {
 	status = -1
 	if cmd == "" {
 		err = utils.ReformatError("Command string not provided to ExecCommand")
@@ -181,79 +180,18 @@ func (connection *Conn) ExecCommand(cmd, namespace, podName string) (status int,
 		return
 	}
 
-	var stdout, stderr bytes.Buffer
+	var stdoutBuffer, stderrBuffer bytes.Buffer
 	err = exec.Stream(remotecommand.StreamOptions{
-		Stdout: &stdout,
-		Stderr: &stderr,
+		Stdout: &stdoutBuffer,
+		Stderr: &stderrBuffer,
 		Tty:    false,
 	})
-
+	stdout = stdoutBuffer.String()
 	if err != nil {
 		if exit, ok := err.(executil.CodeExitError); ok {
 			//the command has been executed on the container, but the underlying command raised an error
 			//this is an 'external' error and represents a successful communication with the cluster
-			err = utils.ReformatError(fmt.Sprintf("%s [%s] [%s]", err, stdout.String(), stderr.String()))
-			status = exit.Code
-			return
-		}
-		// Internal error
-		err = utils.ReformatError("Issue in Stream: %v", err)
-	}
-
-	return
-}
-
-// ExecCommand executes the supplied command on the given pod name in the specified namespace.
-func (connection *Conn) ExecCommand2(cmd, namespace, podName string) (status int, stdOut string, err error) {
-	status = -1
-	if cmd == "" {
-		err = utils.ReformatError("Command string not provided to ExecCommand")
-		return
-	}
-	connection.waitForPod(namespace, podName)
-
-	log.Printf("[DEBUG] Executing command: \"%s\" on POD '%s' in namespace '%s'", cmd, podName, namespace)
-	request := connection.clientSet.CoreV1().RESTClient().Post().Resource("pods").
-		Name(podName).Namespace(namespace).SubResource("exec")
-
-	scheme := runtime.NewScheme()
-	if err = apiv1.AddToScheme(scheme); err != nil {
-		err = utils.ReformatError("Could not add to scheme: %v", err)
-		return
-	}
-
-	parameterCodec := runtime.NewParameterCodec(scheme)
-	options := apiv1.PodExecOptions{
-		Command: strings.Fields(cmd),
-		Stdout:  true,
-		Stderr:  true,
-		TTY:     false,
-		// 'Container:' is required if more than one container exists
-	}
-
-	request.VersionedParams(&options, parameterCodec)
-
-	log.Printf("[DEBUG] %s.%s: ExecCommand Request URL: %v", utils.CallerName(2), utils.CallerName(1), request.URL().String())
-	config, err := clientcmd.BuildConfigFromFlags("", config.Vars.ServicePacks.Kubernetes.KubeConfigPath)
-	exec, err := remotecommand.NewSPDYExecutor(config, "POST", request.URL())
-	if err != nil {
-		err = utils.ReformatError("Failed to create Executor: %v", err)
-		return
-	}
-
-	var stdout, stderr bytes.Buffer
-	err = exec.Stream(remotecommand.StreamOptions{
-		Stdout: &stdout,
-		Stderr: &stderr,
-		Tty:    false,
-	})
-
-	stdOut = stdout.String()
-	if err != nil {
-		if exit, ok := err.(executil.CodeExitError); ok {
-			//the command has been executed on the container, but the underlying command raised an error
-			//this is an 'external' error and represents a successful communication with the cluster
-			err = utils.ReformatError(fmt.Sprintf("%s [%s] [%s]", err, stdout.String(), stderr.String()))
+			err = utils.ReformatError(fmt.Sprintf("err: %s ; stdout: %s ; stderr: %s", err, stdout, stderrBuffer.String()))
 			status = exit.Code
 			return
 		}

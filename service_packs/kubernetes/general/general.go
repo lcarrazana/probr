@@ -309,7 +309,7 @@ func (scenario *scenarioState) theResultOfAProcessInsideThePodEstablishingADirec
 	cmd := "curl -s -o /dev/null -I -L -w %{http_code} " + urlAddress
 
 	stepTrace.WriteString(fmt.Sprintf("Attempt to run command in the pod: '%s'; ", cmd))
-	_, stdOut, cmdErr := conn.ExecCommand2(cmd, scenario.namespace, scenario.pods[0])
+	_, stdOut, cmdErr := conn.ExecCommand(cmd, scenario.namespace, scenario.pods[0])
 
 	// Validate that no internal error occurred during execution of curl command
 	if cmdErr != nil {
