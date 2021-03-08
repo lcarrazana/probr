@@ -1,17 +1,11 @@
 package general
 
 import (
-	"log"
-	"os"
-	"strconv"
-
 	apiv1 "k8s.io/api/core/v1"
 
 	"github.com/citihub/probr/audit"
 	"github.com/citihub/probr/config"
-	"github.com/citihub/probr/service_packs/coreengine"
 	"github.com/citihub/probr/service_packs/kubernetes"
-	"github.com/cucumber/godog"
 )
 
 const (
@@ -19,30 +13,9 @@ const (
 	defaultNAProbePodName   = "na-test-pod"
 )
 
-type scenarioState struct {
-	name           string
-	currentStep    string
-	audit          *audit.ScenarioAudit
-	probe          *audit.Probe
-	podState       kubernetes.PodState
-	httpStatusCode int
-	podName        string
-	wildcardRoles  interface{}
-}
-
-func beforeScenario(s *scenarioState, probeName string, gs *godog.Scenario) {
-	s.name = gs.Name
-	s.probe = audit.State.GetProbeLog(probeName)
-	s.audit = audit.State.GetProbeLog(probeName).InitializeAuditor(gs.Name, gs.Tags)
-	coreengine.LogScenarioStart(gs)
-}
-
 // NetworkAccess defines functionality for supporting Network Access tests.
 type NetworkAccess interface {
-	ClusterIsDeployed() *bool
 	SetupNetworkAccessProbePod(probe *audit.Probe) (*apiv1.Pod, *kubernetes.PodAudit, error)
-	TeardownNetworkAccessProbePod(p string, e string) error
-	AccessURL(pn *string, url *string) (int, error)
 }
 
 // NA implements NetworkAccess.
@@ -82,53 +55,9 @@ func (n *NA) setup() {
 	n.probeImage = config.Vars.ServicePacks.Kubernetes.AuthorisedContainerRegistry + "/" + config.Vars.ServicePacks.Kubernetes.ProbeImage
 }
 
-// ClusterIsDeployed verifies if a suitable cluster is deployed.
-func (n *NA) ClusterIsDeployed() *bool {
-	return n.k.ClusterIsDeployed()
-}
-
 // SetupNetworkAccessProbePod creates a pod with characteristics required for testing network access.
 func (n *NA) SetupNetworkAccessProbePod(probe *audit.Probe) (*apiv1.Pod, *kubernetes.PodAudit, error) {
 	pname, ns, cname, image := kubernetes.GenerateUniquePodName(n.probePodName), kubernetes.Namespace, n.probeContainer, n.probeImage
 	//let caller handle result:
 	return n.k.CreatePod(pname, ns, cname, image, true, nil, probe)
-}
-
-// TeardownNetworkAccessProbePod deletes the test pod with the given name.
-func (n *NA) TeardownNetworkAccessProbePod(p string, e string) error {
-	_, exists := os.LookupEnv("DONT_DELETE")
-	if !exists {
-		err := n.k.DeletePod(p, kubernetes.Namespace, e) //don't worry about waiting
-		return err
-	}
-
-	return nil
-}
-
-// AccessURL calls the supplied URL and returns the http code
-func (n *NA) AccessURL(pn *string, url *string) (int, error) {
-
-	//create a curl command to access the supplied url
-	cmd := "curl -s -o /dev/null -I -L -w %{http_code} " + *url
-	res := n.k.ExecCommand(cmd, kubernetes.Namespace, pn)
-	httpCode := res.Stdout
-
-	log.Printf("[INFO] URL: %v HTTP Code: %v Exit Code: %v (error: %v)", *url, httpCode, res.Code, res.Err)
-
-	if res.Err != nil && !res.Internal {
-		//error which is not internal (so external!)
-		//this means code is from the execution of the command on the cluster
-
-		//Check the exit code.  If it's '6' (Couldn't resolve host.)
-		//then we want to nil out the error and return the code as this
-		//is an expected condition if access is inhibited
-		if res.Code == 6 {
-			return res.Code, nil
-		}
-		//otherwise return both code & error
-		return res.Code, res.Err
-	}
-
-	//no errors, so just return code
-	return strconv.Atoi(httpCode)
 }
