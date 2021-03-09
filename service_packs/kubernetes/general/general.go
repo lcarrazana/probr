@@ -128,7 +128,7 @@ func (scenario *scenarioState) aPodIsDeployedInTheCluster() error {
 
 func (scenario *scenarioState) theResultOfAProcessInsideThePodEstablishingADirectHTTPConnectionToXIsY(urlAddress, result string) error {
 	// Supported values for urlAddress:
-	//	A valid absolute path URL with or without http(s) prefix
+	//	A valid absolute path URL with http(s) prefix
 	//
 	// Supported values for result:
 	//	'blocked'
@@ -139,17 +139,12 @@ func (scenario *scenarioState) theResultOfAProcessInsideThePodEstablishingADirec
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
-	// Default to http prefix
-	if !(strings.HasPrefix(strings.ToLower(urlAddress), "http://") ||
-		strings.HasPrefix(strings.ToLower(urlAddress), "https://")) {
-		urlAddress = "http://" + urlAddress
-	}
-
 	// Guard clause - Validate url
 	if _, urlErr := url.ParseRequestURI(urlAddress); urlErr != nil {
 		err = utils.ReformatError("Invalid url provided.")
 		return err
 	}
+
 	// Guard clause - Ensure pod was created in previous step
 	if len(scenario.pods) == 0 {
 		err = utils.ReformatError("Pod failed to create in the previous step")

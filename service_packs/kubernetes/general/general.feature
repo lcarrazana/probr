@@ -22,9 +22,8 @@ Feature: General Cluster Security Configurations
         When a pod is deployed in the cluster
         Then the result of a process inside the pod establishing a direct http(s) connection to "<URL>" is "<RESULT>"
         
-        # If URL doesn't contain http(s) prefix, 'http' will be used by default
         Examples:
-            | URL               | RESULT  |
-            | www.google.com    | blocked |
-            | www.microsoft.com | blocked |
-            | www.ubuntu.com    | blocked |
+            | URL                       | RESULT  |
+            | http://www.google.com     | blocked |
+            | http://www.microsoft.com  | blocked |
+            | http://www.ubuntu.com     | blocked |
