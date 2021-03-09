@@ -4,6 +4,7 @@ package connection
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -38,6 +39,16 @@ type Connection interface {
 	CreatePodFromObject(pod *apiv1.Pod, probeName string) (*apiv1.Pod, error)
 	DeletePodIfExists(podName, namespace, probeName string) error
 	ExecCommand(command, namespace, podName string) (status int, stdout string, err error)
+	GetRawResourcesByApiEndpoint(apiEndPoint string) (*K8SJSON, error)
+}
+
+// K8SJSON encapsulates the response from a raw/rest call to the Kubernetes API
+type K8SJSON struct {
+	APIVersion string
+	Items      []struct {
+		Kind     string
+		Metadata map[string]string
+	}
 }
 
 var instance *Conn
@@ -198,6 +209,34 @@ func (connection *Conn) ExecCommand(cmd, namespace, podName string) (status int,
 		err = utils.ReformatError("Issue in Stream: %v", err)
 	}
 	return
+}
+
+// GetRawResourcesByApiEndpoint makes a 'raw' REST call to k8s to get the resources specified by the
+// supplied endpoint, e.g. "apis/aadpodidentity.k8s.io/v1/azureidentitybindings".
+// This is used to interact with available custom resources in the cluster, such as azureidentitybindings
+func (connection *Conn) GetRawResourcesByApiEndpoint(apiEndPoint string) (*K8SJSON, error) {
+
+	r := connection.clientSet.CoreV1().RESTClient().Get().AbsPath(apiEndPoint)
+	log.Printf("[DEBUG] REST request: %+v", r)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	res := r.Do(ctx)
+	if res.Error() != nil {
+		return nil, res.Error()
+	}
+
+	b, _ := res.Raw()
+	bs := string(b)
+	log.Printf("[DEBUG] STRING result: %v", bs)
+
+	j := K8SJSON{}
+	json.Unmarshal(b, &j)
+
+	log.Printf("[DEBUG] JSON result: %+v", j)
+
+	return &j, nil
 }
 
 func (connection *Conn) setClientConfig() {

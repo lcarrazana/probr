@@ -9,9 +9,7 @@ import (
 	aibv1 "github.com/Azure/aad-pod-identity/pkg/apis/aadpodidentity"
 	"github.com/citihub/probr/audit"
 	"github.com/citihub/probr/config"
-	"github.com/citihub/probr/service_packs/coreengine"
 	"github.com/citihub/probr/service_packs/kubernetes"
-	"github.com/cucumber/godog"
 	apiv1 "k8s.io/api/core/v1"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -258,11 +256,4 @@ func (i *IAM) getAadPodIDBinding(useDefaultNS bool, aibName string) *string {
 	}
 
 	return &b
-}
-
-func beforeScenario(s *scenarioState, probeName string, gs *godog.Scenario) {
-	s.name = gs.Name
-	s.probe = audit.State.GetProbeLog(probeName)
-	s.audit = audit.State.GetProbeLog(probeName).InitializeAuditor(gs.Name, gs.Tags)
-	coreengine.LogScenarioStart(gs)
 }
