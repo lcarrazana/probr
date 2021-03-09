@@ -1,5 +1,4 @@
-// Package general provides the implementation required to execute the feature-based test cases
-// described in the the 'events' directory.
+// Package general provides the implementation required to execute the BDD tests described in general.feature file
 package general
 
 import (
@@ -59,138 +58,6 @@ func (scenario *scenarioState) aKubernetesClusterIsDeployed() error {
 	return err
 }
 
-// TODO: Confirm 330
-// //@CIS-5.1.3
-// // I inspect the "<Roles / Cluster Roles>" that are configured
-// func (scenario *scenarioState) iInspectTheThatAreConfigured(roleLevel string) error {
-// 	stepTrace, payload, err := utils.AuditPlaceholders()
-// 	defer func() {
-// 		// Standard auditing logic to ensures panics are also audited
-// 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
-// 	}()
-
-// 	if roleLevel == "Cluster Roles" {
-// 		stepTrace.WriteString("Retrieving instance cluster roles; ")
-// 		l, e := kubernetes.GetKubeInstance().GetClusterRolesByResource("*")
-// 		err = e
-// 		scenario.wildcardRoles = l
-// 	} else if roleLevel == "Roles" {
-// 		stepTrace.WriteString("Retrieving instance roles; ")
-// 		l, e := kubernetes.GetKubeInstance().GetRolesByResource("*")
-// 		err = e
-// 		scenario.wildcardRoles = l
-// 	}
-// 	if err != nil {
-// 		err = utils.ReformatError("Could not retrieve role level '%v': %v", roleLevel, err)
-// 	}
-
-// 	stepTrace.WriteString("Stored any retrieved wildcard roles in state for following steps; ")
-// 	payload = struct {
-// 		PodState kubernetes.PodState
-// 	}{scenario.podState}
-// 	return err
-// }
-
-// TODO: Confirm 330
-// func (scenario *scenarioState) iShouldOnlyFindWildcardsInKnownAndAuthorisedConfigurations() error {
-// 	// Standard auditing logic to ensures panics are also audited
-// 	stepTrace, payload, err := utils.AuditPlaceholders()
-// 	defer func() {
-// 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
-// 	}()
-
-// 	//we strip out system/known entries in the cluster roles & roles call
-// 	var wildcardCount int
-// 	//	wildcardCount := len(s.wildcardRoles.([]interface{}))
-// 	stepTrace.WriteString("Removing known entries from the cluster roles; ")
-// 	switch scenario.wildcardRoles.(type) {
-// 	case *[]v1.Role:
-// 		wildCardRoles := scenario.wildcardRoles.(*[]rbacv1.Role)
-// 		wildcardCount = len(*wildCardRoles)
-// 	case *[]v1.ClusterRole:
-// 		wildCardRoles := scenario.wildcardRoles.(*[]rbacv1.ClusterRole)
-// 		wildcardCount = len(*wildCardRoles)
-// 	default:
-// 	}
-
-// 	stepTrace.WriteString("Validate that no unexpected wildcards were found; ")
-// 	if wildcardCount > 0 {
-// 		err = utils.ReformatError("roles exist with wildcarded resources")
-// 	}
-
-// 	payload = struct {
-// 		PodState kubernetes.PodState
-// 	}{scenario.podState}
-
-// 	return err
-// }
-
-// TODO: Confirm 330
-// //@CIS-5.6.3
-// func (scenario *scenarioState) iAttemptToCreateADeploymentWhichDoesNotHaveASecurityContext() error {
-// 	// Standard auditing logic to ensures panics are also audited
-// 	stepTrace, payload, err := utils.AuditPlaceholders()
-// 	defer func() {
-// 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
-// 	}()
-
-// 	stepTrace.WriteString("Create unique pod name; ")
-// 	cname := "probr-general"
-// 	podName := kubernetes.GenerateUniquePodName(cname)
-
-// 	stepTrace.WriteString("Attempt to deploy ProbeImage without a security context; ")
-// 	image := config.Vars.ServicePacks.Kubernetes.AuthorisedContainerRegistry + "/" + config.Vars.ServicePacks.Kubernetes.ProbeImage
-// 	pod, podAudit, err := kubernetes.GetKubeInstance().CreatePod(podName, "probr-general-test-ns", cname, image, true, nil, scenario.probe)
-
-// 	stepTrace.WriteString(fmt.Sprintf(
-// 		"Ensure failure to deploy returns '%s'; ", kubernetes.UndefinedPodCreationErrorReason))
-// 	err = kubernetes.ProcessPodCreationResult(&scenario.podState, pod, kubernetes.UndefinedPodCreationErrorReason, err)
-
-// 	payload = kubernetes.PodPayload{Pod: pod, PodAudit: podAudit}
-// 	return err
-// }
-
-// TODO: Confirm 330
-// func (scenario *scenarioState) theDeploymentIsRejected() error {
-// 	// Standard auditing logic to ensures panics are also audited
-// 	stepTrace, payload, err := utils.AuditPlaceholders()
-// 	defer func() {
-// 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
-// 	}()
-
-// 	//looking for a non-nil creation error
-// 	if scenario.podState.CreationError == nil {
-// 		err = utils.ReformatError("pod %v was created successfully. Test fail.", scenario.podState.PodName)
-// 	}
-
-// 	stepTrace.WriteString("Validates that an expected creation error occurred in the previous step; ")
-// 	payload = struct {
-// 		PodState kubernetes.PodState
-// 	}{scenario.podState}
-
-// 	return err
-// }
-
-// TODO: Confirm 331
-// //@CIS-6.10.1
-// // PENDING IMPLEMENTATION
-// func (scenario *scenarioState) iShouldNotBeAbleToAccessTheKubernetesWebUI() error {
-// 	//TODO: will be difficult to test this.  To access it, a proxy needs to be created:
-// 	//az aks browse --resource-group rg-probr-all-policies --name ProbrAllPolicies
-// 	//which will then open a browser at:
-// 	//http://127.0.0.1:8001/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/#/login
-// 	//I don't think this is going to be easy to do from here
-// 	//Is there another test?  Or is it sufficient to verify that no kube-dashboard is running?
-
-// 	// Standard auditing logic to ensures panics are also audited
-// 	stepTrace, payload, err := utils.AuditPlaceholders()
-// 	defer func() {
-// 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
-// 	}()
-// 	stepTrace.WriteString("PENDING IMPLEMENTATION")
-// 	return godog.ErrPending
-// }
-
 func (scenario *scenarioState) theKubernetesWebUIIsDisabled() error {
 
 	stepTrace, payload, err := utils.AuditPlaceholders()
@@ -226,15 +93,6 @@ func (scenario *scenarioState) theKubernetesWebUIIsDisabled() error {
 
 	return err
 }
-
-// NetworkAccess is the section of the kubernetes package which provides the kubernetes interactions required to support
-// network access scenarios.
-//var na NetworkAccess
-
-// SetNetworkAccess allows injection of a specific NetworkAccess helper.
-// func SetNetworkAccess(n NetworkAccess) {
-// 	na = n
-// }
 
 func (scenario *scenarioState) aPodIsDeployedInTheCluster() error {
 
@@ -292,16 +150,23 @@ func (scenario *scenarioState) theResultOfAProcessInsideThePodEstablishingADirec
 		err = utils.ReformatError("Invalid url provided.")
 		return err
 	}
+	// Guard clause - Ensure pod was created in previous step
+	if len(scenario.pods) == 0 {
+		err = utils.ReformatError("Pod failed to create in the previous step")
+		return err
+	}
 
 	// Validate input value
-	var expectedHTTPResponse int
+	var expectedCurlExitCode, expectedHTTPResponse int
 	switch result {
 	case "blocked":
-		expectedHTTPResponse = 403 // TODO: Confirm 403 is expected command for blocked url?
-		//Previously, we were passing on anything different than 200, which I believe could lead to false positives.
-		// Ref: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status
+		expectedCurlExitCode = 6
+		// Expecting curl exit code 6 (Couldn't resolve host) //TODO Confirm exit code is 7 in GCP
+		// Ref: https://everything.curl.dev/usingcurl/returns
+
+		expectedHTTPResponse = 0 // Output of curl command shall be "000"
 	default:
-		err = utils.ReformatError("Unexpected value provided for expected command result: %s", result) // No payload is necessary if an invalid value was provided
+		err = utils.ReformatError("Unexpected value provided for expected command result: %s", result)
 		return err
 	}
 
@@ -309,11 +174,21 @@ func (scenario *scenarioState) theResultOfAProcessInsideThePodEstablishingADirec
 	cmd := "curl -s -o /dev/null -I -L -w %{http_code} " + urlAddress
 
 	stepTrace.WriteString(fmt.Sprintf("Attempt to run command in the pod: '%s'; ", cmd))
-	_, stdOut, cmdErr := conn.ExecCommand(cmd, scenario.namespace, scenario.pods[0])
+	exitCode, stdOut, cmdErr := conn.ExecCommand(cmd, scenario.namespace, scenario.pods[0])
 
 	// Validate that no internal error occurred during execution of curl command
-	if cmdErr != nil {
+	if cmdErr != nil && exitCode == -1 {
 		err = utils.ReformatError("Error raised when attempting to execute curl command inside container: %v", cmdErr)
+		return err
+	}
+
+	// TODO: Confirm this implementation:
+	// Expected Exit Code from Curl command is:	6
+	// Expected HTTP Response in stdout is:		000
+
+	stepTrace.WriteString("Check expected exit code was raised from curl command; ")
+	if exitCode != expectedCurlExitCode {
+		err = utils.ReformatError("Unexpected exit code: %d Error: %v", exitCode, cmdErr)
 		return err
 	}
 
@@ -330,12 +205,20 @@ func (scenario *scenarioState) theResultOfAProcessInsideThePodEstablishingADirec
 	}
 
 	payload = struct {
+		PodName              string
+		Namespace            string
 		Command              string
+		ExpectedCurlExitCode int
+		CurlExitCode         int
 		ExpectedHTTPResponse int
 		HTTPResponse         int
 		StdOut               string
 	}{
+		PodName:              scenario.pods[0],
+		Namespace:            scenario.namespace,
 		Command:              cmd,
+		ExpectedCurlExitCode: expectedCurlExitCode,
+		CurlExitCode:         exitCode,
 		ExpectedHTTPResponse: expectedHTTPResponse,
 		HTTPResponse:         httpResponse,
 		StdOut:               stdOut,
@@ -376,21 +259,8 @@ func (probe probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 	// Background
 	ctx.Step(`^a Kubernetes cluster exists which we can deploy into$`, scenario.aKubernetesClusterIsDeployed)
 
-	// TODO: Confirm 330
-	//@CIS-5.1.3
-	//ctx.Step(`^I inspect the "([^"]*)" that are configured$`, scenario.iInspectTheThatAreConfigured)
-	//ctx.Step(`^I should only find wildcards in known and authorised configurations$`, scenario.iShouldOnlyFindWildcardsInKnownAndAuthorisedConfigurations)
-
-	// TODO: Confirm 330
-	//@CIS-5.6.3
-	//ctx.Step(`^I attempt to create a deployment which does not have a Security Context$`, scenario.iAttemptToCreateADeploymentWhichDoesNotHaveASecurityContext)
-	//ctx.Step(`^the deployment is rejected$`, scenario.theDeploymentIsRejected)
-
-	// TODO: Confirm 331
-	//ctx.Step(`^I should not be able to access the Kubernetes Web UI$`, scenario.iShouldNotBeAbleToAccessTheKubernetesWebUI)
+	// Steps
 	ctx.Step(`^the Kubernetes Web UI is disabled$`, scenario.theKubernetesWebUIIsDisabled)
-
-	// k-gen-004
 	ctx.Step(`^a pod is deployed in the cluster$`, scenario.aPodIsDeployedInTheCluster)
 	ctx.Step(`^the result of a process inside the pod establishing a direct http\(s\) connection to "([^"]*)" is "([^"]*)"$`, scenario.theResultOfAProcessInsideThePodEstablishingADirectHTTPConnectionToXIsY)
 
