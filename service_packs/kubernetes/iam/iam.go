@@ -1,3 +1,4 @@
+// Package iam provides the implementation required to execute the BDD tests described in iam.feature file
 package iam
 
 import (
@@ -7,18 +8,34 @@ import (
 
 	"github.com/cucumber/godog"
 
+	"github.com/citihub/probr/audit"
 	"github.com/citihub/probr/service_packs/coreengine"
 	"github.com/citihub/probr/service_packs/kubernetes"
+	"github.com/citihub/probr/service_packs/kubernetes/connection"
 	"github.com/citihub/probr/utils"
 )
 
 type probeStruct struct{}
 
+// scenarioState holds the steps and state for any scenario in this probe
+type scenarioState struct {
+	name         string
+	currentStep  string
+	namespace    string
+	probe        *audit.Probe
+	audit        *audit.ScenarioAudit
+	pods         []string
+	podState     kubernetes.PodState //TODO: Remove
+	useDefaultNS bool                // TODO: Remove
+}
+
 // Probe meets the service pack interface for adding the logic from this file
 var Probe probeStruct
+var scenario scenarioState
+var conn connection.Connection
 
 const (
-	identityPodsNamespace = "kube-system" //value needs replacing with configuration
+	identityPodsNamespace = "kube-system" //value needs replacing with configuration - Does this need its own cofig var, or can we use ServicePacks.Kubernetes.SystemNamespace
 )
 
 // IdentityAccessManagement is the section of the kubernetes package which provides the kubernetes interactions required to support

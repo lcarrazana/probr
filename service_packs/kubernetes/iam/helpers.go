@@ -19,15 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-type scenarioState struct {
-	name         string
-	currentStep  string
-	audit        *audit.ScenarioAudit
-	probe        *audit.Probe
-	podState     kubernetes.PodState
-	useDefaultNS bool
-}
-
 const (
 	//default values.  Overrides can be supplied via the environment.
 	defaultIAMProbeContainer = "iam-test"
