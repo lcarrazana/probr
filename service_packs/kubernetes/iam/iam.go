@@ -9,6 +9,7 @@ import (
 	"github.com/cucumber/godog"
 
 	"github.com/citihub/probr/audit"
+	"github.com/citihub/probr/config"
 	"github.com/citihub/probr/service_packs/coreengine"
 	"github.com/citihub/probr/service_packs/kubernetes"
 	"github.com/citihub/probr/service_packs/kubernetes/connection"
@@ -33,10 +34,6 @@ type scenarioState struct {
 var Probe probeStruct
 var scenario scenarioState
 var conn connection.Connection
-
-const (
-	identityPodsNamespace = "kube-system" //value needs replacing with configuration - Does this need its own cofig var, or can we use ServicePacks.Kubernetes.SystemNamespace
-)
 
 // IdentityAccessManagement is the section of the kubernetes package which provides the kubernetes interactions required to support
 // identity access management scenarios.
@@ -288,6 +285,7 @@ func (s *scenarioState) theClusterHasManagedIdentityComponentsDeployed() error {
 		s.audit.AuditScenarioStep(s.currentStep, stepTrace.String(), payload, err)
 	}()
 
+	identityPodsNamespace := getAzureIdentityNamespaceFromConfig()
 	stepTrace.WriteString(fmt.Sprintf(
 		"Get pods from '%s' namespace; ", identityPodsNamespace))
 	//look for the mic pods in the default ns
@@ -328,6 +326,7 @@ func (s *scenarioState) iExecuteTheCommandAgainstTheMICPod(arg1 string) error {
 		s.audit.AuditScenarioStep(s.currentStep, stepTrace.String(), payload, err)
 	}()
 
+	identityPodsNamespace := getAzureIdentityNamespaceFromConfig()
 	stepTrace.WriteString(fmt.Sprintf(
 		"Attempt to execute command '%s'; ", CatAzJSON.String()))
 	res, err := iam.ExecuteVerificationCmd(s.podState.PodName, CatAzJSON, identityPodsNamespace)
@@ -455,4 +454,9 @@ func (p probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 	ctx.AfterStep(func(st *godog.Step, err error) {
 		ps.currentStep = ""
 	})
+}
+
+func getAzureIdentityNamespaceFromConfig() string {
+	// TODO: Caution, this looks like an explicit dependency on Azure. Confirm workaround exists to decouple.
+	return config.Vars.ServicePacks.Kubernetes.Azure.IdentityNamespace
 }
