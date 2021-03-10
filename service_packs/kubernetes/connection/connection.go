@@ -39,7 +39,9 @@ type Connection interface {
 	CreatePodFromObject(pod *apiv1.Pod, probeName string) (*apiv1.Pod, error)
 	DeletePodIfExists(podName, namespace, probeName string) error
 	ExecCommand(command, namespace, podName string) (status int, stdout string, err error)
-	GetRawResourcesByApiEndpoint(apiEndPoint string) (*K8SJSON, error)
+	GetPodsByNamespace(namespace string) (*apiv1.PodList, error)
+	GetPodIPs(namespace, podName string) (string, string, error)
+	GetRawResourcesByAPIEndpoint(apiEndPoint string) (resource *K8SJSON, err error)
 }
 
 // K8SJSON encapsulates the response from a raw/rest call to the Kubernetes API
@@ -208,13 +210,55 @@ func (connection *Conn) ExecCommand(cmd, namespace, podName string) (status int,
 		// Internal error
 		err = utils.ReformatError("Issue in Stream: %v", err)
 	}
+
 	return
 }
 
-// GetRawResourcesByApiEndpoint makes a 'raw' REST call to k8s to get the resources specified by the
+// GetNamespace returns a particular namespace object for a given name
+func (connection *Conn) GetNamespace(namespace string) (*apiv1.Namespace, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	namespaceObj, err := connection.clientSet.CoreV1().Namespaces().Get(
+		ctx, namespace, metav1.GetOptions{})
+
+	return namespaceObj, err
+}
+
+// GetPodsByNamespace returns list of pods within specified namespace
+func (connection *Conn) GetPodsByNamespace(namespace string) (*apiv1.PodList, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Validate namespace exists and is valid
+	namespaceObj, getNamespaceErr := connection.GetNamespace(namespace)
+	if getNamespaceErr != nil {
+		return nil, utils.ReformatError("Error returning provided namespace: %v", getNamespaceErr)
+	}
+
+	pods, err := connection.clientSet.CoreV1().Pods(namespaceObj.Name).List(ctx, metav1.ListOptions{})
+
+	return pods, err
+}
+
+// GetPodIPs will retrieve a pod by name and return its IP and its host's IP
+func (connection *Conn) GetPodIPs(namespace, podName string) (podIP string, hostIP string, err error) {
+	connection.waitForPod(namespace, podName)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pod, err := connection.clientSet.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+	if err != nil {
+		return
+	}
+	return pod.Status.PodIP, pod.Status.HostIP, nil
+}
+
+// GetRawResourcesByAPIEndpoint makes a 'raw' REST call to k8s to get the resources specified by the
 // supplied endpoint, e.g. "apis/aadpodidentity.k8s.io/v1/azureidentitybindings".
-// This is used to interact with available custom resources in the cluster, such as azureidentitybindings
-func (connection *Conn) GetRawResourcesByApiEndpoint(apiEndPoint string) (*K8SJSON, error) {
+// This is used to interact with available custom resources in the cluster, such as azureidentitybindings.
+func (connection *Conn) GetRawResourcesByAPIEndpoint(apiEndPoint string) (resource *K8SJSON, err error) {
 
 	r := connection.clientSet.CoreV1().RESTClient().Get().AbsPath(apiEndPoint)
 	log.Printf("[DEBUG] REST request: %+v", r)
@@ -284,7 +328,7 @@ func (connection *Conn) modifyContext(rawConfig clientcmdapi.Config, context str
 }
 
 // waitForPod ensures pod has entered a running state, or returns any error encountered
-func (connection *Conn) waitForPod(namespace string, podName string) error {
+func (connection *Conn) waitForPod(namespace string, podName string) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
 
@@ -292,7 +336,7 @@ func (connection *Conn) waitForPod(namespace string, podName string) error {
 	w, err := ps.Watch(ctx, metav1.ListOptions{})
 
 	if err != nil {
-		return err
+		return
 	}
 
 	log.Printf("[INFO] *** Waiting for pod: %s", podName)
@@ -316,9 +360,9 @@ func (connection *Conn) waitForPod(namespace string, podName string) error {
 			log.Printf("[DEBUG] Container Status: %+v", con)
 		}
 
-		err := connection.podInErrorState(pod)
+		err = connection.podInErrorState(pod)
 		if err != nil {
-			return err
+			return
 		}
 
 		if pod.Status.Phase == apiv1.PodRunning {
@@ -326,7 +370,7 @@ func (connection *Conn) waitForPod(namespace string, podName string) error {
 		}
 
 	}
-	return nil
+	return
 }
 
 func (connection *Conn) podInErrorState(p *apiv1.Pod) error {

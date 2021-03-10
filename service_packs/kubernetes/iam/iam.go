@@ -119,7 +119,7 @@ func (scenario *scenarioState) aNamedAzureIdentityBindingExistsInNamedNS(aibName
 
 	stepTrace.WriteString(fmt.Sprintf(
 		"Retrieve Azure Identity Bindings from cluster using api endpoint '%s'; ", aadpodidentityAPIEndpoint))
-	azureidentitybindings, getError := conn.GetRawResourcesByApiEndpoint(aadpodidentityAPIEndpoint)
+	azureidentitybindings, getError := conn.GetRawResourcesByAPIEndpoint(aadpodidentityAPIEndpoint)
 	if getError != nil {
 		err = utils.ReformatError("An error occured while retrieving Azure Identity Bindings from K8s cluster: %v", getError)
 		return err
@@ -138,6 +138,37 @@ func (scenario *scenarioState) aNamedAzureIdentityBindingExistsInNamedNS(aibName
 		err = utils.ReformatError("Azure Identity Binding '%s' was not found in namespace '%s'; ", aibName, namespace)
 		return err
 	}
+
+	return err
+}
+
+func (scenario *scenarioState) iCreateASimplePodInNamespaceAssignedWithThatAzureIdentityBindingOld(namespace, aibName string) error {
+	// Standard auditing logic to ensures panics are also audited
+	stepTrace, payload, err := utils.AuditPlaceholders()
+	defer func() {
+		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
+	}()
+
+	specPath := "iam-azi-test-aib-curl.yaml"
+	stepTrace.WriteString(fmt.Sprintf(
+		"Load pod spec from '%s'; ", specPath))
+	y, err := utils.ReadStaticFile(kubernetes.AssetsDir, specPath)
+	if err != nil {
+		err = utils.ReformatError("error reading yaml for test: %v", err)
+		log.Print(err)
+	} else {
+		if namespace == "the default" {
+			scenario.useDefaultNS = true
+		}
+		stepTrace.WriteString(fmt.Sprintf(
+			"Create simple pod in %s namespace assigned with the azure identity binding %s", namespace, aibName))
+		pd, err := iam.CreateIAMProbePod(y, scenario.useDefaultNS, aibName, scenario.probe)
+		err = kubernetes.ProcessPodCreationResult(&scenario.podState, pd, kubernetes.UndefinedPodCreationErrorReason, err)
+	}
+
+	payload = struct {
+		PodState kubernetes.PodState
+	}{scenario.podState}
 
 	return err
 }
@@ -474,9 +505,8 @@ func (p probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 	// Background
 	ctx.Step(`^a Kubernetes cluster exists which we can deploy into$`, ps.aKubernetesClusterIsDeployed)
 
-	//AZ-AAD-AI-1.0
+	// Steps
 	ctx.Step(`^an AzureIdentityBinding called "([^"]*)" exists in the namespace called "([^"]*)"$`, ps.aNamedAzureIdentityBindingExistsInNamedNS)
-
 	ctx.Step(`^I create a simple pod in "([^"]*)" namespace assigned with the "([^"]*)" AzureIdentityBinding$`, ps.iCreateASimplePodInNamespaceAssignedWithThatAzureIdentityBinding)
 
 	//AZ-AAD-AI-1.0, AZ-AAD-AI-1.1
