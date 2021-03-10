@@ -39,6 +39,7 @@ type Connection interface {
 	DeletePodIfExists(podName, namespace, probeName string) error
 	ExecCommand(command, namespace, podName string) (status int, stdout string, err error)
 	GetPodsByNamespace(namespace string) (*apiv1.PodList, error)
+	GetPodIPs(namespace, podName string) (string, string, error)
 }
 
 var instance *Conn
@@ -229,6 +230,20 @@ func (connection *Conn) GetPodsByNamespace(namespace string) (*apiv1.PodList, er
 	return pods, err
 }
 
+// GetPodIPs will retrieve a pod by name and return its IP and its host's IP
+func (connection *Conn) GetPodIPs(namespace, podName string) (podIP string, hostIP string, err error) {
+	connection.waitForPod(namespace, podName)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pod, err := connection.clientSet.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
+	if err != nil {
+		return
+	}
+	return pod.Status.PodIP, pod.Status.HostIP, nil
+}
+
 func (connection *Conn) setClientConfig() {
 	// Adapted from clientcmd.BuildConfigFromFlags:
 	// https://github.com/kubernetes/client-go/blob/5ab99756f65dbf324e5adf9bd020a20a024bad85/tools/clientcmd/client_config.go#L606
@@ -274,7 +289,7 @@ func (connection *Conn) modifyContext(rawConfig clientcmdapi.Config, context str
 }
 
 // waitForPod ensures pod has entered a running state, or returns any error encountered
-func (connection *Conn) waitForPod(namespace string, podName string) error {
+func (connection *Conn) waitForPod(namespace string, podName string) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
 
@@ -282,7 +297,7 @@ func (connection *Conn) waitForPod(namespace string, podName string) error {
 	w, err := ps.Watch(ctx, metav1.ListOptions{})
 
 	if err != nil {
-		return err
+		return
 	}
 
 	log.Printf("[INFO] *** Waiting for pod: %s", podName)
@@ -306,9 +321,9 @@ func (connection *Conn) waitForPod(namespace string, podName string) error {
 			log.Printf("[DEBUG] Container Status: %+v", con)
 		}
 
-		err := connection.podInErrorState(pod)
+		err = connection.podInErrorState(pod)
 		if err != nil {
-			return err
+			return
 		}
 
 		if pod.Status.Phase == apiv1.PodRunning {
@@ -316,7 +331,7 @@ func (connection *Conn) waitForPod(namespace string, podName string) error {
 		}
 
 	}
-	return nil
+	return
 }
 
 func (connection *Conn) podInErrorState(p *apiv1.Pod) error {
