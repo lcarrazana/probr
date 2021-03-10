@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"strconv"
 	"strings"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -65,7 +64,8 @@ func (scenario *scenarioState) theKubernetesWebUIIsDisabled() error {
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
-	kubeSystemNamespace, dashboardPodNamePrefix := getKubeSystemNamespaceAndDashboardPodNamePrefixFromConfig()
+	kubeSystemNamespace := config.Vars.ServicePacks.Kubernetes.SystemNamespace
+	dashboardPodNamePrefix := config.Vars.ServicePacks.Kubernetes.DashboardPodNamePrefix
 	stepTrace.WriteString(fmt.Sprintf("Attempt to find a pod in the '%s' namespace with the prefix '%s'; ", kubeSystemNamespace, dashboardPodNamePrefix))
 
 	stepTrace.WriteString(fmt.Sprintf("Get all pods from '%s' namespace; ", kubeSystemNamespace))
@@ -152,14 +152,12 @@ func (scenario *scenarioState) theResultOfAProcessInsideThePodEstablishingADirec
 	}
 
 	// Validate input value
-	var expectedCurlExitCode, expectedHTTPResponse int
+	var expectedCurlExitCode int
 	switch result {
 	case "blocked":
 		expectedCurlExitCode = 6
 		// Expecting curl exit code 6 (Couldn't resolve host) //TODO Confirm exit code is 7 in GCP
 		// Ref: https://everything.curl.dev/usingcurl/returns
-
-		expectedHTTPResponse = 0 // Output of curl command shall be "000"
 	default:
 		err = utils.ReformatError("Unexpected value provided for expected command result: %s", result)
 		return err
@@ -179,24 +177,11 @@ func (scenario *scenarioState) theResultOfAProcessInsideThePodEstablishingADirec
 
 	// TODO: Confirm this implementation:
 	// Expected Exit Code from Curl command is:	6
-	// Expected HTTP Response in stdout is:		000
 
 	stepTrace.WriteString("Check expected exit code was raised from curl command; ")
 	if exitCode != expectedCurlExitCode {
 		err = utils.ReformatError("Unexpected exit code: %d Error: %v", exitCode, cmdErr)
 		return err
-	}
-
-	// Validate that stdout contains valid http response code
-	httpResponse, parseErr := strconv.Atoi(stdOut)
-	if parseErr != nil {
-		err = utils.ReformatError("Unexpected result in stdout. Please ensure curl command is in the following format so that only http response code is added to standard output: '%s'", "curl -s -o /dev/null -I -L -w %%{http_code} _urlAddress_")
-		return err
-	}
-
-	stepTrace.WriteString("Check expected HTTP response code was received in standard output; ")
-	if httpResponse != expectedHTTPResponse {
-		err = utils.ReformatError("Unexpected HTTP response code: %d", httpResponse)
 	}
 
 	payload = struct {
@@ -205,8 +190,6 @@ func (scenario *scenarioState) theResultOfAProcessInsideThePodEstablishingADirec
 		Command              string
 		ExpectedCurlExitCode int
 		CurlExitCode         int
-		ExpectedHTTPResponse int
-		HTTPResponse         int
 		StdOut               string
 	}{
 		PodName:              scenario.pods[0],
@@ -214,8 +197,6 @@ func (scenario *scenarioState) theResultOfAProcessInsideThePodEstablishingADirec
 		Command:              cmd,
 		ExpectedCurlExitCode: expectedCurlExitCode,
 		CurlExitCode:         exitCode,
-		ExpectedHTTPResponse: expectedHTTPResponse,
-		HTTPResponse:         httpResponse,
 		StdOut:               stdOut,
 	}
 
@@ -293,13 +274,6 @@ func afterScenario(scenario scenarioState, probe probeStruct, gs *godog.Scenario
 	coreengine.LogScenarioEnd(gs)
 }
 
-func getKubeSystemNamespaceAndDashboardPodNamePrefixFromConfig() (kubeSystemNamespace, dashboardPodNamePrefix string) {
-	kubeSystemNamespace = config.Vars.ServicePacks.Kubernetes.SystemNamespace
-	dashboardPodNamePrefix = config.Vars.ServicePacks.Kubernetes.DashboardPodNamePrefix
-
-	return
-}
-
 func (scenario *scenarioState) createPodfromObject(podObject *apiv1.Pod) (createdPodObject *apiv1.Pod, err error) {
 	createdPodObject, err = conn.CreatePodFromObject(podObject, Probe.Name())
 	if err == nil {
@@ -307,5 +281,3 @@ func (scenario *scenarioState) createPodfromObject(podObject *apiv1.Pod) (create
 	}
 	return
 }
-
-// TODO: Finish cleanup for helpers.go once #330 and #331 have been confirmed
