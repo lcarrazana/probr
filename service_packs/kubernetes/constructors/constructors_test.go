@@ -151,6 +151,19 @@ func TestPodSpec(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "Pod Labels is not nil",
+			args: args{
+				baseName:                 "pod1",
+				namespace:                "pod1",
+				containerSecurityContext: nil,
+			},
+			want: func(gotPod *apiv1.Pod, want args, t *testing.T) {
+				if gotPod.Labels == nil {
+					t.Error("PodSpec() did not create a Labels object, but wanted at least an empty map")
+				}
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

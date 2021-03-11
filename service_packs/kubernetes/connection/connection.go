@@ -41,7 +41,7 @@ type Connection interface {
 	ExecCommand(command, namespace, podName string) (status int, stdout string, err error)
 	GetPodsByNamespace(namespace string) (*apiv1.PodList, error)
 	GetPodIPs(namespace, podName string) (string, string, error)
-	GetRawResourcesByAPIEndpoint(apiEndPoint string) (resource *K8SJSON, err error)
+	GetRawResourcesByAPIEndpoint(apiEndPoint string) (resource K8SJSON, err error)
 }
 
 // K8SJSON encapsulates the response from a raw/rest call to the Kubernetes API
@@ -258,29 +258,30 @@ func (connection *Conn) GetPodIPs(namespace, podName string) (podIP string, host
 // GetRawResourcesByAPIEndpoint makes a 'raw' REST call to k8s to get the resources specified by the
 // supplied endpoint, e.g. "apis/aadpodidentity.k8s.io/v1/azureidentitybindings".
 // This is used to interact with available custom resources in the cluster, such as azureidentitybindings.
-func (connection *Conn) GetRawResourcesByAPIEndpoint(apiEndPoint string) (resource *K8SJSON, err error) {
+func (connection *Conn) GetRawResourcesByAPIEndpoint(apiEndPoint string) (resource K8SJSON, err error) {
 
-	r := connection.clientSet.CoreV1().RESTClient().Get().AbsPath(apiEndPoint)
-	log.Printf("[DEBUG] REST request: %+v", r)
+	restClient := connection.clientSet.CoreV1().RESTClient().Get().AbsPath(apiEndPoint)
+	log.Printf("[DEBUG] REST request: %+v", restClient)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	res := r.Do(ctx)
-	if res.Error() != nil {
-		return nil, res.Error()
+	response := restClient.Do(ctx)
+	if response.Error() != nil {
+		err = response.Error()
+		return
 	}
 
-	b, _ := res.Raw()
-	bs := string(b)
-	log.Printf("[DEBUG] STRING result: %v", bs)
+	responseBytes, _ := response.Raw()
+	responseJSON := string(responseBytes)
+	log.Printf("[DEBUG] STRING result: %v", responseJSON)
 
-	j := K8SJSON{}
-	json.Unmarshal(b, &j)
+	resource = K8SJSON{}
+	json.Unmarshal(responseBytes, &resource)
 
-	log.Printf("[DEBUG] JSON result: %+v", j)
+	log.Printf("[DEBUG] JSON result: %+v", resource)
 
-	return &j, nil
+	return
 }
 
 func (connection *Conn) setClientConfig() {

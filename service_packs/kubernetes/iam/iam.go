@@ -2,17 +2,20 @@
 package iam
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
 
 	"github.com/cucumber/godog"
+	apiv1 "k8s.io/api/core/v1"
 
 	"github.com/citihub/probr/audit"
 	"github.com/citihub/probr/config"
 	"github.com/citihub/probr/service_packs/coreengine"
 	"github.com/citihub/probr/service_packs/kubernetes"
 	"github.com/citihub/probr/service_packs/kubernetes/connection"
+	"github.com/citihub/probr/service_packs/kubernetes/constructors"
 	"github.com/citihub/probr/utils"
 )
 
@@ -34,6 +37,20 @@ type scenarioState struct {
 var Probe probeStruct
 var scenario scenarioState
 var conn connection.Connection
+
+// ProbeCommand defines commands for use in testing IAM
+type ProbeCommand int
+
+// enum supporting ProbeCommand
+const (
+	CatAzJSON ProbeCommand = iota
+	CurlAuthToken
+)
+
+func (c ProbeCommand) String() string {
+	return [...]string{"cat /etc/kubernetes/azure.json",
+		"curl http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fmanagement.azure.com%2F -H Metadata:true -s"}[c]
+}
 
 // IdentityAccessManagement is the section of the kubernetes package which provides the kubernetes interactions required to support
 // identity access management scenarios.
@@ -99,7 +116,6 @@ func (s *scenarioState) aNamedAzureIdentityBindingExistsInNamedNSOld(aibName str
 	return err
 }
 
-//AZ-AAD-AI-1.0
 func (scenario *scenarioState) aNamedAzureIdentityBindingExistsInNamedNS(aibName string, namespace string) error {
 
 	// Standard auditing logic to ensures panics are also audited
@@ -139,93 +155,85 @@ func (scenario *scenarioState) aNamedAzureIdentityBindingExistsInNamedNS(aibName
 		return err
 	}
 
+	payload = struct {
+		AADIdentityBindings connection.K8SJSON
+	}{
+		AADIdentityBindings: azureidentitybindings,
+	}
+
 	return err
 }
 
-func (scenario *scenarioState) iCreateASimplePodInNamespaceAssignedWithThatAzureIdentityBindingOld(namespace, aibName string) error {
+func (scenario *scenarioState) iSucceedToCreateASimplePodInNamespaceAssignedWithThatAzureIdentityBinding(namespace, aibName string) error {
+	// Supported values for namespace:
+	//  'the probr'
+	//	'the default'
+	//
+	// Supported values for aibName:
+	//	'probr-aib'
+
 	// Standard auditing logic to ensures panics are also audited
 	stepTrace, payload, err := utils.AuditPlaceholders()
 	defer func() {
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
-	specPath := "iam-azi-test-aib-curl.yaml"
-	stepTrace.WriteString(fmt.Sprintf(
-		"Load pod spec from '%s'; ", specPath))
-	y, err := utils.ReadStaticFile(kubernetes.AssetsDir, specPath)
-	if err != nil {
-		err = utils.ReformatError("error reading yaml for test: %v", err)
-		log.Print(err)
-	} else {
-		if namespace == "the default" {
-			scenario.useDefaultNS = true
-		}
-		stepTrace.WriteString(fmt.Sprintf(
-			"Create simple pod in %s namespace assigned with the azure identity binding %s", namespace, aibName))
-		pd, err := iam.CreateIAMProbePod(y, scenario.useDefaultNS, aibName, scenario.probe)
-		err = kubernetes.ProcessPodCreationResult(&scenario.podState, pd, kubernetes.UndefinedPodCreationErrorReason, err)
+	// Validate input
+	switch aibName {
+	case "probr-aib":
+	default:
+		err = utils.ReformatError("Unexpected value provided for aibName: %s", aibName)
+		return err
+	}
+
+	var aadPodIDBinding string
+
+	// Validate input
+	switch namespace {
+	case "the probr":
+		aadPodIDBinding = aibName // TODO: This value is the same in both config and feature file
+	case "the default":
+		scenario.namespace = "default"
+		aadPodIDBinding = config.Vars.ServicePacks.Kubernetes.Azure.DefaultNamespaceAIB // TODO: This value is the same in both config and feature file
+	default:
+		err = utils.ReformatError("Unexpected value provided for namespace: %s", namespace)
+		return err
+	}
+
+	stepTrace.WriteString(fmt.Sprintf("Build a pod spec with default values; "))
+	securityContext := constructors.DefaultContainerSecurityContext()
+	podObject := constructors.PodSpec(Probe.Name(), config.Vars.ServicePacks.Kubernetes.ProbeNamespace, securityContext)
+	// TODO: Do we need spec:nodeSelector:kubernetes.io/os: linux ? This is the only diff with iam-azi-test-aib-curl.yaml
+
+	stepTrace.WriteString(fmt.Sprintf("Add '%s' namespace to pod spec; ", scenario.namespace))
+	podObject.Namespace = scenario.namespace
+
+	stepTrace.WriteString(fmt.Sprintf("Add 'aadpodidbinding':'%s' label to pod spec; ", aadPodIDBinding))
+	// For a pod to use AAD pod-managed identity, the pod needs an aadpodidbinding label with a value that matches a selector from a AzureIdentityBinding.
+	// Ref: https://docs.microsoft.com/en-us/azure/aks/use-azure-ad-pod-identity
+	podObject.Labels["aadpodidbinding"] = aadPodIDBinding
+
+	stepTrace.WriteString(fmt.Sprintf("Create pod from spec; "))
+	createdPodObject, creationErr := scenario.createPodfromObject(podObject)
+
+	stepTrace.WriteString("Validate pod creation succeeds; ")
+	if creationErr != nil {
+		err = utils.ReformatError("Pod creation did not succeed: %v", creationErr)
 	}
 
 	payload = struct {
-		PodState kubernetes.PodState
-	}{scenario.podState}
-
-	return err
-}
-
-func (scenario *scenarioState) iCreateASimplePodInNamespaceAssignedWithThatAzureIdentityBinding(namespace, aibName string) error {
-	// Standard auditing logic to ensures panics are also audited
-	stepTrace, payload, err := utils.AuditPlaceholders()
-	defer func() {
-		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
-	}()
-
-	specPath := "iam-azi-test-aib-curl.yaml"
-	stepTrace.WriteString(fmt.Sprintf(
-		"Load pod spec from '%s'; ", specPath))
-	y, err := utils.ReadStaticFile(kubernetes.AssetsDir, specPath)
-	if err != nil {
-		err = utils.ReformatError("error reading yaml for test: %v", err)
-		log.Print(err)
-	} else {
-		if namespace == "the default" {
-			scenario.useDefaultNS = true
-		}
-		stepTrace.WriteString(fmt.Sprintf(
-			"Create simple pod in %s namespace assigned with the azure identity binding %s", namespace, aibName))
-		pd, err := iam.CreateIAMProbePod(y, scenario.useDefaultNS, aibName, scenario.probe)
-		err = kubernetes.ProcessPodCreationResult(&scenario.podState, pd, kubernetes.UndefinedPodCreationErrorReason, err)
+		Namespace      string
+		AADPodIdentity string
+		RequestedPod   *apiv1.Pod
+		CreatedPod     *apiv1.Pod
+		CreationError  error
+	}{
+		Namespace:      scenario.namespace,
+		AADPodIdentity: aadPodIDBinding,
+		RequestedPod:   podObject,
+		CreatedPod:     createdPodObject,
+		CreationError:  creationErr,
 	}
-
-	payload = struct {
-		PodState kubernetes.PodState
-	}{scenario.podState}
-
-	return err
-}
-
-//AZ-AAD-AI-1.0, AZ-AAD-AI-1.1
-func (scenario *scenarioState) thePodIsDeployedSuccessfully() error {
-	// Standard auditing logic to ensures panics are also audited
-	stepTrace, payload, err := utils.AuditPlaceholders()
-	defer func() {
-		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
-	}()
-
-	stepTrace.WriteString("Validate that the pod was deployed successfully; ")
-
-	//check for pod name
-	//note: the pod may still have a creation error if it didn't start up properly, but will have a name if the deployment succeeded
-	//i.e.:
-	// podName != "" -> successful deploy, potentially non-nil creation error
-	// podName == "" -> unsuccessful deploy, non-nil creation error
-	if scenario.podState.PodName == "" {
-		err = utils.ReformatError("pod was not deployed successfully - creation error: %v", scenario.podState.CreationError)
-	}
-
-	payload = struct {
-		PodState kubernetes.PodState
-	}{scenario.podState}
 
 	return err
 }
@@ -238,51 +246,71 @@ func (scenario *scenarioState) anAttemptToObtainAnAccessTokenFromThatPodShouldFa
 	return scenario.anAttemptToObtainAnAccessTokenFromThatPodShould("Fail")
 }
 
-func (scenario *scenarioState) anAttemptToObtainAnAccessTokenFromThatPodShould(expectedresult string) error {
+func (scenario *scenarioState) anAttemptToObtainAnAccessTokenFromThatPodShould(expectedResult string) error {
+	// Supported values for expectedResult:
+	//	'Fail'
+	//  'Succeed'
+
 	// Standard auditing logic to ensures panics are also audited
 	stepTrace, payload, err := utils.AuditPlaceholders()
 	defer func() {
 		scenario.audit.AuditScenarioStep(scenario.currentStep, stepTrace.String(), payload, err)
 	}()
 
-	// TODO: Pod creation is checked in previous step. This may not be necessary.
-	if scenario.podState.CreationError != nil {
-		err = utils.ReformatError("failed to create pod", scenario.podState.CreationError)
-		log.Print(err)
-	} else {
-		stepTrace.WriteString(fmt.Sprintf(
-			"Get access token for '%s' pod, expected result is '%s'; ", scenario.podState.PodName, expectedresult))
-		//curl for the auth token ... need to supply appropriate ns
-		res, err := iam.GetAccessToken(scenario.podState.PodName, scenario.useDefaultNS)
-
-		if err != nil {
-			//this is an error from trying to execute the command as opposed to
-			//the command itself returning an error
-			err = utils.ReformatError("error raised trying to execute auth token command - %v", err)
-			log.Print(err)
-		} else {
-			if expectedresult == "Fail" {
-				stepTrace.WriteString("Validate no token was found; ")
-				if res != nil && len(*res) > 0 {
-					//we got a token .. error
-					err = utils.ReformatError("token was successfully acquired on pod %v (result: %v)", scenario.podState.PodName, *res)
-				}
-			} else if expectedresult == "Succeed" {
-				stepTrace.WriteString("Validate token was found; ")
-				if res == nil {
-					//we didn't get a token .. error
-					err = utils.ReformatError("failed to acquire token on pod %v", scenario.podState.PodName)
-				}
-			} else {
-				err = utils.ReformatError("unrecognised expected result: %v", expectedresult)
-				log.Print(err)
-			}
-		}
+	// Validate input
+	var shouldReturnToken bool
+	switch expectedResult {
+	case "Fail":
+		shouldReturnToken = false
+	case "Succeed":
+		shouldReturnToken = true
+	default:
+		err = utils.ReformatError("Unexpected value provided for expectedResult: %s", expectedResult)
+		return err
 	}
 
-	payload = struct {
-		PodState kubernetes.PodState
-	}{scenario.podState}
+	// Guard clause: Ensure pod was created in previous step
+	if len(scenario.pods) == 0 {
+		err = utils.ReformatError("Pod failed to create in the previous step")
+		return err
+	}
+
+	podName := scenario.pods[0]
+
+	// Mechanism to get access token is executing a curl command on the pod
+	// TODO: Clarify this and fix
+	cmd := "curl http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fmanagement.azure.com%2F -H Metadata:true -s"
+
+	stepTrace.WriteString(fmt.Sprintf("Attempt to run command in the pod: '%s'; ", cmd))
+	_, stdOut, cmdErr := conn.ExecCommand(cmd, scenario.namespace, podName)
+
+	// Validate that no internal error occurred during execution of curl command
+	if cmdErr != nil {
+		err = utils.ReformatError("Error raised when attempting to execute curl command inside container: %v", cmdErr)
+		return err
+	}
+
+	stepTrace.WriteString("Attempt to extract access token from command output; ")
+	var accessToken struct {
+		AccessToken string `json:"access_token,omitempty"`
+	}
+	jsonConvertErr := json.Unmarshal([]byte(stdOut), &accessToken)
+
+	switch shouldReturnToken {
+	case true:
+		stepTrace.WriteString("Validate token was found; ")
+		if jsonConvertErr != nil {
+			err = utils.ReformatError("Failed to acquire token on pod %v Error: %v StdOut: %s", podName, jsonConvertErr, stdOut)
+		}
+		if &accessToken.AccessToken == nil {
+			err = utils.ReformatError("Failed to acquire token on pod %v", podName)
+		}
+	case false:
+		stepTrace.WriteString("Validate no token was found; ") //TODO: Was previously getting false-positive. Now is failing as it is supposed to.
+		if jsonConvertErr != nil && &accessToken.AccessToken == nil && len(accessToken.AccessToken) > 0 {
+			err = utils.ReformatError("Token was successfully acquired on pod %v (result: %v)", podName, accessToken.AccessToken) //TODO: Remove access token from output for security reasons
+		}
+	}
 
 	return err
 }
@@ -507,13 +535,9 @@ func (p probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 
 	// Steps
 	ctx.Step(`^an AzureIdentityBinding called "([^"]*)" exists in the namespace called "([^"]*)"$`, ps.aNamedAzureIdentityBindingExistsInNamedNS)
-	ctx.Step(`^I create a simple pod in "([^"]*)" namespace assigned with the "([^"]*)" AzureIdentityBinding$`, ps.iCreateASimplePodInNamespaceAssignedWithThatAzureIdentityBinding)
-
-	//AZ-AAD-AI-1.0, AZ-AAD-AI-1.1
-	ctx.Step(`^the pod is deployed successfully$`, ps.thePodIsDeployedSuccessfully)
-
-	//AZ-AAD-AI-1.0
+	ctx.Step(`^I succeed to create a simple pod in "([^"]*)" namespace assigned with the "([^"]*)" AzureIdentityBinding$`, ps.iSucceedToCreateASimplePodInNamespaceAssignedWithThatAzureIdentityBinding)
 	ctx.Step(`^an attempt to obtain an access token from that pod should "([^"]*)"$`, ps.anAttemptToObtainAnAccessTokenFromThatPodShould)
+
 	//AZ-AAD-AI-1.1 (same as above but just single shot scenario)
 	ctx.Step(`^an attempt to obtain an access token from that pod should fail$`, ps.anAttemptToObtainAnAccessTokenFromThatPodShouldFail)
 
@@ -546,6 +570,8 @@ func beforeScenario(s *scenarioState, probeName string, gs *godog.Scenario) {
 	s.name = gs.Name
 	s.probe = audit.State.GetProbeLog(probeName)
 	s.audit = audit.State.GetProbeLog(probeName).InitializeAuditor(gs.Name, gs.Tags)
+	s.pods = make([]string, 0)
+	s.namespace = config.Vars.ServicePacks.Kubernetes.ProbeNamespace
 	coreengine.LogScenarioStart(gs)
 }
 
@@ -564,4 +590,12 @@ func afterScenario(scenario scenarioState, probe probeStruct, gs *godog.Scenario
 func getAzureIdentityNamespaceFromConfig() string {
 	// TODO: Caution, this looks like an explicit dependency on Azure. Confirm workaround exists to decouple.
 	return config.Vars.ServicePacks.Kubernetes.Azure.IdentityNamespace
+}
+
+func (scenario *scenarioState) createPodfromObject(podObject *apiv1.Pod) (createdPodObject *apiv1.Pod, err error) {
+	createdPodObject, err = conn.CreatePodFromObject(podObject, Probe.Name())
+	if err == nil {
+		scenario.pods = append(scenario.pods, createdPodObject.ObjectMeta.Name)
+	}
+	return
 }

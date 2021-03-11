@@ -23,20 +23,6 @@ const (
 	defaultIAMProbePodName   = "iam-test-pod"
 )
 
-// ProbeCommand defines commands for use in testing IAM
-type ProbeCommand int
-
-// enum supporting ProbeCommand
-const (
-	CatAzJSON ProbeCommand = iota
-	CurlAuthToken
-)
-
-func (c ProbeCommand) String() string {
-	return [...]string{"cat /etc/kubernetes/azure.json",
-		"curl http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https%3A%2F%2Fmanagement.azure.com%2F -H Metadata:true -s"}[c]
-}
-
 // IdentityAccessManagement encapsulates functionality for querying and probing Identity and Access Management setup.
 type IdentityAccessManagement interface {
 	AzureIdentityExists(namespace, aiName string) (bool, error)
