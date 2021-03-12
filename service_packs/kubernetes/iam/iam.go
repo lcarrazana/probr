@@ -27,7 +27,7 @@ type scenarioState struct {
 	name                  string
 	currentStep           string
 	namespace             string
-	probe                 *audit.Probe
+	probeAudit            *audit.Probe
 	audit                 *audit.ScenarioAudit
 	pods                  []string //All pods created within the test. Should tear down at the end.
 	micPodName            string
@@ -106,7 +106,6 @@ func (scenario *scenarioState) aResourceTypeXCalledYExistsInNamespaceCalledZ(res
 		"Check that %s '%s' exists in namespace '%s'; ", resourceType, resourceName, namespace))
 	if !foundInNamespace {
 		err = utils.ReformatError("%s '%s' was not found in namespace '%s'; ", resourceType, resourceName, namespace)
-		return err
 	}
 
 	payload = struct {
@@ -124,7 +123,7 @@ func (scenario *scenarioState) aResourceTypeXCalledYExistsInNamespaceCalledZ(res
 
 func (scenario *scenarioState) iSucceedToCreateASimplePodInNamespaceAssignedWithThatAzureIdentityBinding(namespace, aibName string) error {
 	// Supported values for namespace:
-	//  'the probr'
+	//	'the probr'
 	//	'the default'
 	//
 	// Supported values for aibName:
@@ -165,7 +164,6 @@ func (scenario *scenarioState) iSucceedToCreateASimplePodInNamespaceAssignedWith
 
 	stepTrace.WriteString(fmt.Sprintf("Build a pod spec with default values; "))
 	podObject := constructors.PodSpec(Probe.Name(), config.Vars.ServicePacks.Kubernetes.ProbeNamespace)
-	// TODO: Do we need spec:nodeSelector:kubernetes.io/os: linux ? This is the only diff with iam-azi-test-aib-curl.yaml
 	// TODO: Delete iam-azi-test-aib-curl.yaml file from 'assets' folder
 
 	stepTrace.WriteString(fmt.Sprintf("Add '%s' namespace to pod spec; ", scenario.namespace))
@@ -204,7 +202,7 @@ func (scenario *scenarioState) iSucceedToCreateASimplePodInNamespaceAssignedWith
 func (scenario *scenarioState) anAttemptToObtainAnAccessTokenFromThatPodShouldX(expectedResult string) error {
 	// Supported values for expectedResult:
 	//	'Fail'
-	//  'Succeed'
+	//	'Succeed'
 
 	// Standard auditing logic to ensures panics are also audited
 	stepTrace, payload, err := utils.AuditPlaceholders()
@@ -256,14 +254,11 @@ func (scenario *scenarioState) anAttemptToObtainAnAccessTokenFromThatPodShouldX(
 	case true:
 		stepTrace.WriteString("Validate token was found; ")
 		if jsonConvertErr != nil {
-			err = utils.ReformatError("Failed to acquire token on pod %v Error: %v StdOut: %s", podName, jsonConvertErr, stdOut)
-		}
-		if &accessToken.AccessToken == nil {
-			err = utils.ReformatError("Failed to acquire token on pod %v", podName)
+			err = utils.ReformatError("Failed to acquire token on pod %v Error: %v StdOut: %s", podName, jsonConvertErr, stdOut) //TODO: Error is being raised (see audit log)
 		}
 	case false:
-		stepTrace.WriteString("Validate no token was found; ") //TODO: Was previously getting false-positive. Now is failing as it is supposed to.
-		if jsonConvertErr != nil && &accessToken.AccessToken == nil && len(accessToken.AccessToken) > 0 {
+		stepTrace.WriteString("Validate no token was found; ") //TODO: This is a potential false positve, since an error is raised by curl command (see audit log)
+		if jsonConvertErr != nil && &accessToken.AccessToken != nil && len(accessToken.AccessToken) > 0 {
 			err = utils.ReformatError("Token was successfully acquired on pod %v (result: %v)", podName, accessToken.AccessToken) //TODO: Adding access token to audit log until it can be tested. Remove afterwards for security reasons.
 		}
 	}
@@ -273,10 +268,10 @@ func (scenario *scenarioState) anAttemptToObtainAnAccessTokenFromThatPodShouldX(
 
 func (scenario *scenarioState) iCreateAnAzureIdentityBindingCalledInANondefaultNamespace(aibName, aiName string) error {
 	// Supported values for aibName:
-	//  A string representing an Azure Identity Binding to be created in K8s cluster
+	//	A string representing an Azure Identity Binding to be created in K8s cluster
 	//
 	// Supported values for aibName:
-	//  A string representing an Azure Identity to be created in K8s cluster
+	//	A string representing an Azure Identity to be created in K8s cluster
 
 	// Standard auditing logic to ensures panics are also audited
 	stepTrace, payload, err := utils.AuditPlaceholders()
@@ -286,23 +281,23 @@ func (scenario *scenarioState) iCreateAnAzureIdentityBindingCalledInANondefaultN
 
 	probrNameSpace := scenario.namespace
 
+	aibName = aibName + "-test-test-test"
 	stepTrace.WriteString(fmt.Sprintf(
 		"Attempt to create '%s' binding in '%s' namespace bound to '%s' identity; ", aibName, probrNameSpace, aiName))
-	createdAIB, err := azureCreateAIB(probrNameSpace, aibName, aiName) // create an AIB in a non-default NS if it deosn't already exist
+	createdAIB, err := azureCreateAIB(probrNameSpace, aibName, aiName) // create an AIB in a non-default NS if it doesn't already exist
 	if err != nil {
 		err = utils.ReformatError("An error occurred while creating '%s' binding: %v", aibName, err)
 		log.Print(err)
 	}
 	// TODO:
-	// - CreateOrReplace AIB
-	// - Delete AIB at the end of test scenario
+	//	- Delete AIB at the end of test scenario
 	scenario.azureIdentityBindings = append(scenario.azureIdentityBindings, aibName)
 
 	payload = struct {
 		Namespace                   string
 		AzureIdentityBindingName    string
 		AzureIdentityName           string
-		CreatedAzureIdentityBinding connection.K8SJSON
+		CreatedAzureIdentityBinding connection.APIResource
 	}{
 		Namespace:                   probrNameSpace,
 		AzureIdentityBindingName:    aibName,
@@ -324,7 +319,7 @@ func (scenario *scenarioState) theClusterHasManagedIdentityComponentsDeployed() 
 	identityPodsNamespace := config.Vars.ServicePacks.Kubernetes.Azure.IdentityNamespace
 	stepTrace.WriteString(fmt.Sprintf(
 		"Get pods from '%s' namespace; ", identityPodsNamespace))
-	//look for the mic pods
+	// look for the mic pods
 	podList, getErr := conn.GetPodsByNamespace(identityPodsNamespace)
 
 	if getErr != nil {
@@ -334,24 +329,7 @@ func (scenario *scenarioState) theClusterHasManagedIdentityComponentsDeployed() 
 
 	var micPodName string
 
-	// stepTrace.WriteString("Validate that at least one pod contains 'mic-' in its name; ")
-	// //a "pass" is the prescence of a "mic*" pod(s)
-	// //break on the first ...
-	// for _, pod := range podList.Items {
-	// 	if strings.Contains(pod.Name, "mic-") {
-	// 		//grab the pod name as we'll execute the cmd against this:
-	// 		micPodName = pod.Name
-	// 		break
-	// 	}
-	// }
-	//TODO: Is it possible to create a custom pod with name containing "mic-"?
-	// Suggestion:
-	//  Check for Labels:"app.kubernetes.io/component=mic"
-	//  or
-	//  Check for Containers:mic:Image:"mcr.microsoft.com/oss/azure/aad-pod-identity/mic*"
 	stepTrace.WriteString("Validate that at least one pod contains Label:'app.kubernetes.io/component=mic'; ")
-	//a "pass" is the prescence of a Labels:"app.kubernetes.io/component=mic"
-	//break on the first ...
 	for _, pod := range podList.Items {
 		if pod.Labels["app.kubernetes.io/component"] == "mic" {
 			micPodName = pod.Name
@@ -454,7 +432,7 @@ func (scenario *scenarioState) theExecutionOfAXCommandInsideTheMICPodIsY(command
 	// Is there any other way to get access to Volume: /etc/kubernetes/azure.json ?
 	// Ref:
 	//  https://hub.docker.com/_/microsoft-k8s-aad-pod-identity-mic?tab=description
-	//	https://github.com/GoogleContainerTools/distroless
+	//  https://github.com/GoogleContainerTools/distroless
 
 	stepTrace.WriteString("Check expected exit code from command execution; ")
 	if exitCode != expectedExitCode {
@@ -523,7 +501,7 @@ func (probe probeStruct) ScenarioInitialize(ctx *godog.ScenarioContext) {
 
 func beforeScenario(s *scenarioState, probeName string, gs *godog.Scenario) {
 	s.name = gs.Name
-	s.probe = audit.State.GetProbeLog(probeName)
+	s.probeAudit = audit.State.GetProbeLog(probeName)
 	s.audit = audit.State.GetProbeLog(probeName).InitializeAuditor(gs.Name, gs.Tags)
 	s.pods = make([]string, 0)
 	s.namespace = config.Vars.ServicePacks.Kubernetes.ProbeNamespace
@@ -584,7 +562,7 @@ func azureIdentityBindingExistsInNamespace(azureIdentityBindingName, namespace s
 }
 
 // azureCreateAIB creates an AzureIdentityBinding in the cluster
-func azureCreateAIB(namespace, aibName, aiName string) (aibResource connection.K8SJSON, err error) {
+func azureCreateAIB(namespace, aibName, aiName string) (aibResource connection.APIResource, err error) {
 
 	resource, createErr := azureK8S.CreateAIB(namespace, aibName, aiName)
 	if errors.IsStatusCode(409, createErr) { // Already Exists

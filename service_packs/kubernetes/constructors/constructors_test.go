@@ -145,6 +145,19 @@ func TestPodSpec(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "Node Selector contains 'kubernetes.io/os':'linux'",
+			args: args{
+				baseName:                 "pod1",
+				namespace:                "pod1",
+				containerSecurityContext: nil,
+			},
+			want: func(gotPod *apiv1.Pod, want args, t *testing.T) {
+				if gotPod.Spec.NodeSelector["kubernetes.io/os"] != "linux" {
+					t.Error("PodSpec() did not include a node selector 'kubernetes.io/os':'linux'")
+				}
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

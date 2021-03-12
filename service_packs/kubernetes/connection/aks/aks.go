@@ -27,7 +27,7 @@ func NewAKS(connection connection.Connection) *AKS {
 }
 
 // CreateAIB creates an AzureIdentityBinding in the cluster, 409 error if it already exists
-func (aks *AKS) CreateAIB(namespace, aibName, aiName string) (resource connection.K8SJSON, err error) {
+func (aks *AKS) CreateAIB(namespace, aibName, aiName string) (resource connection.APIResource, err error) {
 
 	aib := aibv1.AzureIdentityBinding{}
 
@@ -43,7 +43,7 @@ func (aks *AKS) CreateAIB(namespace, aibName, aiName string) (resource connectio
 	// set the api path for the aadpodidentity package which include the azureidentitybindings custom resource definition
 	apiPath := "apis/aadpodidentity.k8s.io/v1"
 
-	resource, err = aks.conn.PostRawResourcesByAPIEndpoint(apiPath, namespace, "azureidentitybindings", runtimeAib)
+	resource, err = aks.conn.PostRawResource(apiPath, namespace, "azureidentitybindings", runtimeAib)
 	log.Printf("Resource %v", resource)
 
 	return
@@ -57,7 +57,7 @@ func (aks *AKS) GetIdentityByNameAndNamespace(azureIdentityName, namespace strin
 	apiEndPoint := "apis/aadpodidentity.k8s.io/v1"
 	resourceType := "azureidentities"
 
-	resource, err = aks.conn.GetRawResourcesByAPIEndpoint(apiEndPoint, namespace, resourceType, azureIdentityName)
+	resource, err = aks.conn.GetRawResourceByName(apiEndPoint, namespace, resourceType, azureIdentityName)
 
 	return
 }
@@ -70,7 +70,7 @@ func (aks *AKS) GetIdentityBindingByNameAndNamespace(azureIdentityBindingName, n
 	apiEndPoint := "apis/aadpodidentity.k8s.io/v1"
 	resourceType := "azureidentitybindings"
 
-	resource, err = aks.conn.GetRawResourcesByAPIEndpoint(apiEndPoint, namespace, resourceType, azureIdentityBindingName)
+	resource, err = aks.conn.GetRawResourceByName(apiEndPoint, namespace, resourceType, azureIdentityBindingName)
 
 	return
 }
