@@ -135,8 +135,8 @@ func TestPodSpec(t *testing.T) {
 		{
 			name: "Pod Labels is not nil",
 			args: args{
-				baseName:                 "pod1",
-				namespace:                "pod1",
+				baseName:                 "pod7",
+				namespace:                "pod7",
 				containerSecurityContext: nil,
 			},
 			want: func(gotPod *apiv1.Pod, want args, t *testing.T) {
@@ -148,8 +148,8 @@ func TestPodSpec(t *testing.T) {
 		{
 			name: "Node Selector contains 'kubernetes.io/os':'linux'",
 			args: args{
-				baseName:                 "pod1",
-				namespace:                "pod1",
+				baseName:                 "pod8",
+				namespace:                "pod8",
 				containerSecurityContext: nil,
 			},
 			want: func(gotPod *apiv1.Pod, want args, t *testing.T) {
