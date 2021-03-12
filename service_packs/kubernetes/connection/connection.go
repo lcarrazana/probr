@@ -41,7 +41,8 @@ type Connection interface {
 	ExecCommand(command, namespace, podName string) (status int, stdout string, err error)
 	GetPodsByNamespace(namespace string) (*apiv1.PodList, error)
 	GetPodIPs(namespace, podName string) (string, string, error)
-	GetRawResourcesByAPIEndpoint(apiEndPoint string) (resource K8SJSON, err error)
+	GetRawResourcesByAPIEndpoint(apiEndPoint, namespace, resourceType, resourceName string) (resource APIResource, err error)
+	PostRawResourcesByAPIEndpoint(apiEndPoint string, namespace string, resourceName string, resourceBody interface{}) (resource K8SJSON, err error)
 }
 
 // K8SJSON encapsulates the response from a raw/rest call to the Kubernetes API
@@ -51,6 +52,22 @@ type K8SJSON struct {
 		Kind     string
 		Metadata map[string]string
 	}
+}
+
+// APIResourceType encapsulates the response from a raw/rest call to the Kubernetes API when getting a resource type
+type APIResourceType struct {
+	APIVersion string
+	Items      []struct {
+		Kind     string
+		Metadata map[string]string
+	}
+}
+
+// APIResource encapsulates the response from a raw/rest call to the Kubernetes API when getting a resource by name
+type APIResource struct {
+	APIVersion string
+	Kind       string
+	Metadata   map[string]string
 }
 
 var instance *Conn
@@ -258,15 +275,63 @@ func (connection *Conn) GetPodIPs(namespace, podName string) (podIP string, host
 // GetRawResourcesByAPIEndpoint makes a 'raw' REST call to k8s to get the resources specified by the
 // supplied endpoint, e.g. "apis/aadpodidentity.k8s.io/v1/azureidentitybindings".
 // This is used to interact with available custom resources in the cluster, such as azureidentitybindings.
-func (connection *Conn) GetRawResourcesByAPIEndpoint(apiEndPoint string) (resource K8SJSON, err error) {
+// An empty value for 'namespace' means retrieving all resources accross all namespaces
+// Sample request params:
+//  apiEndPoint:	apis/aadpodidentity.k8s.io/v1
+//  namespace:		"demo-ns"
+//	resourceName:	"azureidentitybindings"
+func (connection *Conn) GetRawResourcesByAPIEndpoint(apiEndPoint, namespace, resourceType, resourceName string) (resource APIResource, err error) {
 
-	restClient := connection.clientSet.CoreV1().RESTClient().Get().AbsPath(apiEndPoint)
+	restClient := connection.clientSet.CoreV1().RESTClient()
 	log.Printf("[DEBUG] REST request: %+v", restClient)
+
+	getRequest := restClient.Get().
+		AbsPath(apiEndPoint).
+		Namespace(namespace).
+		Resource(resourceType).
+		Name(resourceName)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	response := restClient.Do(ctx)
+	response := getRequest.Do(ctx)
+	if response.Error() != nil {
+		err = response.Error()
+		return
+	}
+
+	responseBytes, _ := response.Raw()
+	responseJSON := string(responseBytes)
+	log.Printf("[DEBUG] STRING result: %v", responseJSON)
+
+	resource = APIResource{}
+	json.Unmarshal(responseBytes, &resource)
+
+	log.Printf("[DEBUG] JSON result: %+v", resource)
+
+	return
+}
+
+// PostRawResourcesByAPIEndpoint makes a 'raw' POST call to k8s to get the resources specified by the
+// supplied endpoint. This is used to interact with available custom resources in the cluster, such as azureidentitybindings.
+// Sample request params:
+//  apiEndPoint:	apis/aadpodidentity.k8s.io/v1
+//  namespace:		"demo-ns"
+//	resourceName:	"azureidentitybindings"
+//	resourceBody:	"{}"
+func (connection *Conn) PostRawResourcesByAPIEndpoint(apiEndPoint string, namespace string, resourceName string, resourceBody interface{}) (resource K8SJSON, err error) {
+
+	restClient := connection.clientSet.CoreV1().RESTClient()
+	postRequest := restClient.Post().
+		AbsPath(apiEndPoint).
+		Namespace(namespace).
+		Resource(resourceName).
+		Body(resourceBody)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	response := postRequest.Do(ctx)
 	if response.Error() != nil {
 		err = response.Error()
 		return
@@ -278,8 +343,6 @@ func (connection *Conn) GetRawResourcesByAPIEndpoint(apiEndPoint string) (resour
 
 	resource = K8SJSON{}
 	json.Unmarshal(responseBytes, &resource)
-
-	log.Printf("[DEBUG] JSON result: %+v", resource)
 
 	return
 }
